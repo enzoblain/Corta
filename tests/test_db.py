@@ -37,12 +37,12 @@ class MigrationTests(unittest.TestCase):
         self.assertIsNone(row["project_id"])
 
     def test_failed_migration_rolls_back(self) -> None:
-        d = Path(self.tmp.name) / "m"
-        d.mkdir()
-        (d / "001_bad.sql").write_text("CREATE TABLE a (x INTEGER);\nCREATE TABLE a (y INTEGER);\n")
+        migrations_dir = Path(self.tmp.name) / "m"
+        migrations_dir.mkdir()
+        (migrations_dir / "001_bad.sql").write_text("CREATE TABLE a (x INTEGER);\nCREATE TABLE a (y INTEGER);\n")
         conn = connect(self.path)
         with self.assertRaises(sqlite3.OperationalError):
-            migrate(conn, d)
+            migrate(conn, migrations_dir)
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
         self.assertNotIn("a", tables)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0], 0)

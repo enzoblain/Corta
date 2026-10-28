@@ -13,6 +13,7 @@ class Request:
     query: dict[str, list[str]] = field(default_factory=dict)
     headers: dict[str, str] = field(default_factory=dict)
     body: bytes = b""
+    client_ip: str = ""
 
     @property
     def cookies(self) -> dict[str, str]:
@@ -63,7 +64,5 @@ class Router:
         return deco
 
     def resolve(self, method: str, path: str) -> tuple[Handler, bool] | None:
-        return self._routes.get((method.upper(), path))
-
-    def has_path(self, path: str) -> bool:
-        return any(p == path for _, p in self._routes)
+        method = "GET" if method.upper() == "HEAD" else method.upper()
+        return self._routes.get((method, path))

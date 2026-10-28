@@ -21,3 +21,8 @@ python3 -m unittest
 3. `docker compose up -d --build`
 4. L'app écoute sur le port 8000. Les données vivent dans `./data` (volume monté dans `/data`) : sauvegarder ce dossier. Le conteneur tourne avec l'uid 1000, donc `./data` doit lui être accessible en écriture (`chown 1000 data`).
 5. Si le NAS est exposé sur Internet, placer l'app derrière un reverse proxy HTTPS.
+
+## Sessions et sécurité
+- Changer `SESSION_SECRET` invalide toutes les sessions existantes (la déconnexion ne supprime que le cookie côté navigateur).
+- Après 5 mots de passe erronés en 15 min depuis une même IP, `/login` répond 429. Le compteur est en mémoire (remis à zéro au redémarrage). Derrière un reverse proxy, toutes les requêtes semblent venir de l'IP du proxy.
+- `APP_PASSWORD` ne doit pas rester à `change-me` et `SESSION_SECRET` doit faire au moins 32 caractères, sinon l'app refuse de démarrer.

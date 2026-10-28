@@ -1,4 +1,5 @@
 """HTTP server wiring: routes, auth gate, static files. Run: python3 -m app.server"""
+import logging
 import mimetypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,14 +13,16 @@ from .templates import page, render
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 64 * 1024
+log = logging.getLogger("corta")
 
 
 def is_api(path: str) -> bool:
     return path.startswith("/api/")
 
 
-def build_router(config: Config) -> Router:
+def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Router:
     router = Router()
+    limiter = limiter or auth.LoginLimiter()
 
     def login_page(error: str = "", status: int = 200) -> Response:
         return html_response(page("Connexion", render("login.html", error=error)), status)
@@ -30,8 +33,14 @@ def build_router(config: Config) -> Router:
 
     @router.route("POST", "/login", public=True)
     def login_submit(req: Request) -> Response:
+        if limiter.is_blocked(req.client_ip):
+            resp = login_page("Trop de tentatives. Réessayez plus tard.", 429)
+            resp.headers.append(("Retry-After", str(limiter.window)))
+            return resp
         if not auth.check_password(req.form.get("password", ""), config.app_password):
+            limiter.record_failure(req.client_ip)
             return login_page("Mot de passe incorrect.", 401)
+        limiter.reset(req.client_ip)
         token = auth.make_session(config.session_secret, config.session_ttl)
         cookie = auth.cookie_header(token, config.session_ttl, config.cookie_secure)
         return redirect("/", [("Set-Cookie", cookie)])
@@ -80,14 +89,26 @@ def dispatch(router: Router, config: Config, req: Request) -> Response:
         if is_api(req.path):
             return json_response({"error": "not found"}, 404)
         return html_response("Page introuvable", 404)
-    return found[0](req)
+    try:
+        return found[0](req)
+    except Exception:
+        log.exception("Unhandled error on %s %s", req.method, req.path)
+        if is_api(req.path):
+            return json_response({"error": "internal error"}, 500)
+        return html_response("Erreur interne", 500)
 
 
 def make_handler(router: Router, config: Config) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def _handle(self) -> None:
             parts = urlsplit(self.path)
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if length < 0:
+                self.send_error(400)
+                return
             if length > MAX_BODY:
                 self.send_error(413)
                 return
@@ -97,6 +118,7 @@ def make_handler(router: Router, config: Config) -> type[BaseHTTPRequestHandler]
                 query=parse_qs(parts.query),
                 headers={k.lower(): v for k, v in self.headers.items()},
                 body=self.rfile.read(length) if length else b"",
+                client_ip=self.client_address[0],
             )
             resp = dispatch(router, config, req)
             self.send_response(resp.status)
@@ -106,9 +128,10 @@ def make_handler(router: Router, config: Config) -> type[BaseHTTPRequestHandler]
             for k, v in resp.headers:
                 self.send_header(k, v)
             self.end_headers()
-            self.wfile.write(resp.body)
+            if self.command != "HEAD":
+                self.wfile.write(resp.body)
 
-        do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _handle
+        do_GET = do_HEAD = do_POST = do_PUT = do_PATCH = do_DELETE = _handle
 
     return Handler
 

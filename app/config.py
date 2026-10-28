@@ -23,6 +23,10 @@ def load_config() -> Config:
     missing = [k for k in ("APP_PASSWORD", "SESSION_SECRET") if not os.environ.get(k)]
     if missing:
         raise SystemExit(f"Missing required environment variables: {', '.join(missing)}")
+    if os.environ["APP_PASSWORD"] == "change-me":
+        raise SystemExit("APP_PASSWORD must be changed from the .env.example value")
+    if len(os.environ["SESSION_SECRET"]) < 32:
+        raise SystemExit("SESSION_SECRET must be at least 32 characters")
     return Config(
         app_password=os.environ["APP_PASSWORD"],
         session_secret=os.environ["SESSION_SECRET"],
