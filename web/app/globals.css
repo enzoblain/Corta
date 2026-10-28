@@ -4,3 +4,22 @@ body { margin: 0; padding: 1rem; }
 label { display: grid; gap: 0.25rem; }
 input, button { font: inherit; padding: 0.5rem; }
 .error { color: #b00020; min-height: 1.25rem; margin: 0; }
+.wrap { max-width: 44rem; margin: 1rem auto; padding: 0 0.5rem; display: grid; gap: 0.75rem; }
+.nav { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; max-width: 44rem; margin: 0 auto; }
+.nav form { margin-left: auto; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.list li { border: 1px solid #8884; border-radius: 0.5rem; padding: 0.5rem 0.75rem; display: grid; gap: 0.25rem; }
+.idea { border-left: 4px solid #888; }
+.idea.s-in_progress { border-left-color: #e0a800; }
+.idea.s-done { border-left-color: #2e9e4f; }
+.title { font-weight: 600; }
+.counts, .tags { margin: 0; font-size: 0.9rem; opacity: 0.8; }
+.tag { margin-right: 0.4rem; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.filters a.on { font-weight: 700; text-decoration: none; }
+.inline, .manage { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.stack { display: grid; gap: 0.75rem; }
+textarea, select { font: inherit; padding: 0.5rem; }
+button:disabled, select:disabled { opacity: 0.6; cursor: progress; }
+.danger { color: #b00020; }
+.raw { white-space: pre-wrap; }
