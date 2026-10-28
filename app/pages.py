@@ -59,7 +59,7 @@ def idea_items(ideas: list[sqlite3.Row], tags: dict[int, list[str]]) -> Safe:
             '<form method="post" action="/capture/reprocess">'
             f'<input type="hidden" name="idea_id" value="{idea["id"]}">'
             '<button type="submit">Retraiter avec l\'IA</button></form>'
-            if idea["project_id"] is None and not idea["ai_processed"]
+            if idea["project_id"] is None
             else ""
         )
         tag_html = "".join(f'<span class="tag">{escape_html(t)}</span>' for t in tags.get(idea["id"], []))

@@ -108,6 +108,8 @@ class PageTests(unittest.TestCase):
         conn = connect(self.config.db_path)
         pid = queries.list_projects(conn)[0][0]
         idea = queries.create_idea(conn, "mon idee", pid)
+        processed = queries.create_idea(conn, "traitee", None)
+        queries.update_idea(conn, processed, ai_processed=1)
         conn.close()
         home = self.text(self.call("GET", "/"))
         self.assertIn("&lt;b&gt;Alpha", home)
@@ -117,6 +119,8 @@ class PageTests(unittest.TestCase):
         self.assertEqual(self.call("POST", "/projects/delete", f"id={pid}").status, 303)
         self.assertIn("mon idee", self.text(self.call("GET", "/inbox")))
         self.assertIn("Retraiter avec l&#x27;IA".replace("&#x27;", "'"), self.text(self.call("GET", "/inbox")))
+        inbox = self.text(self.call("GET", "/inbox"))
+        self.assertEqual(inbox.count("Retraiter avec l'IA"), 2)  # also for ai_processed ideas
         self.assertEqual(self.call("GET", "/project").status, 303)
         self.assertEqual(self.call("GET", f"/project?id={pid}").status, 404)
         self.assertEqual(self.call("GET", f"/idea?id={idea}").status, 200)
