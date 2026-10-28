@@ -3,12 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { assertSession } from "@/lib/auth/require";
+import { makeSession } from "@/lib/auth/session";
 
 process.env.APP_PASSWORD = "correct horse";
 process.env.SESSION_SECRET = "t".repeat(32);
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "corta-actions-"));
 
-test("every Server Action refuses a call without session and leaves the database untouched", async () => {
+test("every Server Action fails before touching the database when called outside a valid request", async () => {
   const actions = await import("@/app/actions");
   const { getDb } = await import("@/lib/db");
   const db = getDb();
@@ -35,4 +37,19 @@ test("every Server Action refuses a call without session and leaves the database
   await assert.rejects(actions.saveIdeaAction(prev, form), /Unauthorized|request scope/);
   await assert.rejects(actions.setStatusAction(1, "done"), /Unauthorized|request scope/);
   assert.equal(snapshot(), before);
+});
+
+test("assertSession refuses missing, empty, forged and expired cookies, accepts a valid one", () => {
+  const secret = "t".repeat(32);
+  const past = Math.floor(Date.now() / 1000) - 7200;
+  for (const bad of [
+    undefined,
+    "",
+    "garbage",
+    makeSession("o".repeat(32), 3600),
+    makeSession(secret, 3600, past),
+  ]) {
+    assert.throws(() => assertSession(secret, bad), /Unauthorized/);
+  }
+  assert.doesNotThrow(() => assertSession(secret, makeSession(secret, 3600)));
 });
