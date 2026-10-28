@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/require";
 import { getDb } from "@/lib/db";
 import { NAME_MAX } from "@/lib/capture-shared";
 import { projectHref } from "@/lib/links";
@@ -26,6 +27,7 @@ function isUniqueError(e: unknown): boolean {
 }
 
 export async function createProjectAction(_prev: FormState, data: FormData): Promise<FormState> {
+  await requireSession();
   const name = text(data, "name").slice(0, NAME_MAX);
   if (!name) return { error: "Nom requis." };
   let id: number;
@@ -39,6 +41,7 @@ export async function createProjectAction(_prev: FormState, data: FormData): Pro
 }
 
 export async function renameProjectAction(_prev: FormState, data: FormData): Promise<FormState> {
+  await requireSession();
   const id = parseId(data.get("id"));
   const name = text(data, "name").slice(0, NAME_MAX);
   if (id === null || !name) return { error: "Nom requis." };
@@ -53,12 +56,14 @@ export async function renameProjectAction(_prev: FormState, data: FormData): Pro
 }
 
 export async function deleteProjectAction(data: FormData): Promise<void> {
+  await requireSession();
   const id = parseId(data.get("id"));
   if (id !== null) q.deleteProject(getDb(), id);
   redirect("/");
 }
 
 export async function saveIdeaAction(_prev: FormState, data: FormData): Promise<FormState> {
+  await requireSession();
   const id = parseId(data.get("id"));
   const status = text(data, "status");
   const projectRaw = text(data, "project_id");
@@ -84,6 +89,7 @@ export async function saveIdeaAction(_prev: FormState, data: FormData): Promise<
 
 /** Called from the status select without reloading the page. */
 export async function setStatusAction(id: number, status: string): Promise<FormState> {
+  await requireSession();
   if (!Number.isInteger(id) || !q.isStatus(status)) return { error: "Statut invalide." };
   if (!q.setIdeaStatus(getDb(), id, status)) return { error: "Idée introuvable." };
   return { error: "" };
