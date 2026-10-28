@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Idea } from "@/lib/types";
-import { ReprocessButton } from "./project-forms";
+import { ReprocessButton } from "@/app/capture-flow";
 import { StatusSelect } from "./status-select";
 
 export function IdeaList({ ideas, tags }: { ideas: Idea[]; tags: Map<number, string[]> }) {

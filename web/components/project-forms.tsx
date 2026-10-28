@@ -4,7 +4,6 @@ import { useActionState } from "react";
 import {
   createProjectAction,
   deleteProjectAction,
-  reprocessIdeaAction,
   renameProjectAction,
   saveIdeaAction,
   type FormState,
@@ -46,17 +45,6 @@ export function ManageProject({ project }: { project: Project }) {
       </form>
       <p className="error" role="alert">{state.error}</p>
     </div>
-  );
-}
-
-export function ReprocessButton({ ideaId }: { ideaId: number }) {
-  const [state, action] = useActionState(reprocessIdeaAction, initial);
-  return (
-    <form action={action}>
-      <input type="hidden" name="id" value={ideaId} />
-      <SubmitButton>Retraiter avec l'IA</SubmitButton>
-      <p className="error" role="alert">{state.error}</p>
-    </form>
   );
 }
 

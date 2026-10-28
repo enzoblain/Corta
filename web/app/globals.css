@@ -23,3 +23,4 @@ textarea, select { font: inherit; padding: 0.5rem; }
 button:disabled, select:disabled { opacity: 0.6; cursor: progress; }
 .danger { color: #b00020; }
 .raw { white-space: pre-wrap; }
+.notice { color: #1b6e2d; margin: 0; }
