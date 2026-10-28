@@ -1,5 +1,9 @@
-<main class="card">
-  <h1>Corta</h1>
-  <p>Connecté.</p>
-  <form method="post" action="/logout"><button type="submit">Se déconnecter</button></form>
+<main class="wrap">
+  <h1>Projets</h1>
+  <ul class="list">$rows</ul>
+  <form class="inline" method="post" action="/projects/create">
+    <input name="name" placeholder="Nouveau projet" required maxlength="100" aria-label="Nom du projet">
+    <button type="submit">Créer</button>
+  </form>
+  <p class="error">$error</p>
 </main>

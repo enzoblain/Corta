@@ -4,3 +4,29 @@ label { display: block; margin-bottom: 1rem; }
 input { display: block; width: 100%; box-sizing: border-box; padding: .5rem; margin-top: .25rem; }
 button { padding: .5rem 1rem; cursor: pointer; }
 .error { color: #b00020; min-height: 1.2em; }
+
+/* Corta pages */
+.nav { display: flex; gap: .75rem; align-items: center; padding: .5rem 1rem; background: #fff; box-shadow: 0 1px 4px #0002; flex-wrap: wrap; }
+.nav .brand { font-weight: bold; text-decoration: none; color: inherit; }
+.nav .search { flex: 1; min-width: 8rem; }
+.nav .search input { margin: 0; }
+.wrap { max-width: 48rem; margin: 1rem auto; padding: 0 1rem; }
+.list { list-style: none; padding: 0; margin: 1rem 0; }
+.list li { background: #fff; border-radius: .5rem; padding: .75rem 1rem; margin-bottom: .5rem; box-shadow: 0 1px 3px #0001; }
+.list li .title { font-weight: 600; text-decoration: none; color: inherit; }
+.counts, .tags { color: #666; font-size: .9rem; margin: .25rem 0 0; }
+.tag { display: inline-block; background: #e8e8ee; border-radius: 1rem; padding: 0 .5rem; margin-right: .25rem; font-size: .8rem; }
+.inline { display: flex; gap: .5rem; margin: .5rem 0; }
+.inline input { margin: 0; flex: 1; min-width: 0; }
+.manage { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: space-between; }
+.filters { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+.filters a { padding: .15rem .6rem; border-radius: 1rem; background: #e8e8ee; text-decoration: none; color: inherit; font-size: .9rem; }
+.filters a.on { background: #333; color: #fff; }
+.idea.s-done .title { text-decoration: line-through; color: #777; }
+select, textarea { width: 100%; box-sizing: border-box; padding: .5rem; margin-top: .25rem; font: inherit; }
+select.status { width: auto; margin: .25rem 0 0; }
+.stack label { margin-bottom: 1rem; }
+.raw { white-space: pre-wrap; background: #fff; padding: .75rem; border-radius: .5rem; }
+button.danger { color: #b00020; }
+button.link { background: none; border: 0; text-decoration: underline; }
+@media (max-width: 480px) { .nav { padding: .5rem; } .wrap { padding: 0 .5rem; } }

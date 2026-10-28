@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import auth
 from .config import Config, load_config
 from .db import connect, migrate
+from .pages import build_pages
 from .router import Request, Response, Router, html_response, json_response, redirect
 from .templates import page, render
 
@@ -50,10 +51,6 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
         cookie = auth.cookie_header("", 0, config.cookie_secure)
         return redirect("/login", [("Set-Cookie", cookie)])
 
-    @router.route("GET", "/")
-    def home(req: Request) -> Response:
-        return html_response(page("Corta", render("home.html")))
-
     @router.route("GET", "/healthz", public=True)
     def healthz(req: Request) -> Response:
         return json_response({"ok": True})
@@ -62,6 +59,7 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
     def ping(req: Request) -> Response:
         return json_response({"pong": True})
 
+    build_pages(router, config)
     return router
 
 
