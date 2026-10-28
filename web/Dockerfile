@@ -1,4 +1,6 @@
-FROM node:20-slim AS build
+# Full image for the build stage: it has make/g++ if better-sqlite3's prebuilt binary is missing
+# for the target architecture. The runtime stage stays glibc (never alpine/musl).
+FROM node:20 AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci

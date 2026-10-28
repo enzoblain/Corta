@@ -7,7 +7,7 @@ The product owner chose Next.js (msg #82). The new app lives in `web/`. The Pyth
 
 ## Stack (`web/`)
 - Next.js 16 (App Router), React 19, TypeScript **strict**, no component library. Node 20.
-- Dependencies at the strict minimum: `better-sqlite3` (pinned to `^11`: v12+ has no Node 20 prebuilt binary and needs make/g++). Adding another dependency needs a team discussion first.
+- Dependencies at the strict minimum: `better-sqlite3` (pinned to `^11`: v12 and v13 ship no prebuilt binary for Node 20 on linux arm64 and then compile, but our sandboxes have no make/g++. Do not `npm update` it across majors without checking; fallback idea: built-in `node:sqlite`, Node 22.5+). Adding another dependency needs a team discussion first.
 - SQLite via `better-sqlite3`, hand-written SQL in `web/lib/db/`, no ORM.
 - Tests: `node:test` through `tsx` (`npm test` in `web/`). Also run `npm run typecheck` and `npm run build` before a PR and attach the test output.
 - AI (N3): Claude API called server-side only, never from the browser. `ANTHROPIC_API_KEY` must never reach client code.

@@ -25,6 +25,8 @@ cd web && npm test && npm run typecheck
 4. L'app écoute sur le port 3000. Les données vivent dans `./data` (volume monté dans `/data`) : sauvegarder ce dossier. Le conteneur tourne avec l'uid 1000, donc `./data` doit lui être accessible en écriture (`chown 1000 data`).
 5. Si le NAS est exposé sur Internet, placer l'app derrière un reverse proxy HTTPS, puis mettre `COOKIE_SECURE=1` et `TRUST_PROXY=1`.
 
+Architecture : l'image se construit sur la machine qui lance `docker compose` (x86_64 ou ARM64 du NAS) ; `better-sqlite3` est épinglé en `^11` pour disposer d'un binaire précompilé Node 20, et l'étape de build utilise `node:20` complet pour pouvoir compiler en secours. À vérifier au premier `docker compose up -d --build` sur le NAS.
+
 La base existante créée par la version Python est reprise telle quelle (même fichier `data/app.db`, même schéma). Pour revenir à la version Python : `docker compose stop web`, puis `docker compose --profile legacy up -d --build corta` (port 8000). Ne jamais lancer les deux en même temps.
 
 ## Sessions et sécurité
