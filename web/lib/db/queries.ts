@@ -62,6 +62,23 @@ export function updateIdea(db: Db, id: number, edit: IdeaEdit): boolean {
   return res.changes > 0;
 }
 
+export interface Suggestion {
+  title: string;
+  content: string;
+  projectId: number | null;
+}
+
+/** Stores a validated AI suggestion on an idea and marks it as processed. */
+export function applySuggestion(db: Db, id: number, suggestion: Suggestion): boolean {
+  const res = db
+    .prepare(
+      "UPDATE ideas SET title = ?, content = ?, project_id = ?, ai_processed = 1," +
+        " updated_at = datetime('now') WHERE id = ?",
+    )
+    .run(suggestion.title, suggestion.content, suggestion.projectId, id);
+  return res.changes > 0;
+}
+
 /** Ideas of a project (null = Inbox), optionally filtered by status and tag name. */
 export function listIdeas(
   db: Db,
@@ -113,6 +130,14 @@ export function getProject(db: Db, id: number): Project | undefined {
 export function createProject(db: Db, name: string): number {
   const res = db.prepare("INSERT INTO projects (name) VALUES (?)").run(name);
   return Number(res.lastInsertRowid);
+}
+
+/** Case-insensitive lookup; creates the project when missing. */
+export function getOrCreateProject(db: Db, name: string): number {
+  const row = db.prepare("SELECT id FROM projects WHERE name = ? COLLATE NOCASE").get(name) as
+    | { id: number }
+    | undefined;
+  return row ? row.id : createProject(db, name);
 }
 
 export function renameProject(db: Db, id: number, name: string): boolean {

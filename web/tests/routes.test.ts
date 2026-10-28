@@ -72,3 +72,9 @@ test("proxy: valid session passes, forged or expired is refused", () => {
   assert.equal(proxy(withCookie(makeSession("x".repeat(32), 60))).status, 303);
   assert.equal(proxy(withCookie(makeSession(SECRET, 60, 1000))).status, 303);
 });
+
+test("proxy: capture routes require a session", () => {
+  for (const p of ["suggest", "reprocess", "confirm"]) {
+    assert.equal(proxy(new NextRequest(`http://localhost/api/capture/${p}`, { method: "POST" })).status, 401);
+  }
+});

@@ -3,14 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
+import { NAME_MAX } from "@/lib/capture-shared";
 import { projectHref } from "@/lib/links";
 import * as q from "@/lib/db/queries";
 
 export interface FormState {
   error: string;
 }
-
-const NAME_MAX = 100;
 
 function parseId(raw: FormDataEntryValue | null): number | null {
   const s = typeof raw === "string" ? raw : "";
@@ -88,12 +87,4 @@ export async function setStatusAction(id: number, status: string): Promise<FormS
   if (!Number.isInteger(id) || !q.isStatus(status)) return { error: "Statut invalide." };
   if (!q.setIdeaStatus(getDb(), id, status)) return { error: "Idée introuvable." };
   return { error: "" };
-}
-
-/** The AI call arrives with N3; until then the button is wired but reports it. */
-export async function reprocessIdeaAction(_prev: FormState, data: FormData): Promise<FormState> {
-  const id = parseId(data.get("id"));
-  const idea = id === null ? undefined : q.getIdea(getDb(), id);
-  if (!idea || idea.project_id !== null) return { error: "Idée introuvable dans l'Inbox." };
-  return { error: "Le retraitement IA n'est pas encore disponible." };
 }

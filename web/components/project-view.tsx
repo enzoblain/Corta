@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDb } from "@/lib/db";
 import * as q from "@/lib/db/queries";
 import type { IdeaStatus } from "@/lib/types";
+import { Notice } from "./notice";
 import { IdeaList } from "./idea-list";
 import { ManageProject } from "./project-forms";
 import { Nav } from "./nav";
@@ -41,6 +42,7 @@ export function ProjectView({ projectId, searchParams }: { projectId: number | n
       <Nav />
       <main className="wrap">
         <h1>{project ? project.name : "Inbox"}</h1>
+        <Notice code={searchParams.notice} />
         <p><Link href="/">← Projets</Link></p>
         {project ? <ManageProject project={project} /> : null}
         <nav className="filters">
