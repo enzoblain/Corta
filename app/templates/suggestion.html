@@ -1,0 +1,16 @@
+<main class="card wide">
+  <h1>Valider la suggestion</h1>
+  <form method="post" action="/ideas/confirm">
+    <input type="hidden" name="raw_text" value="$raw_text">
+    <input type="hidden" name="idea_id" value="$idea_id">
+    <label>Titre <input name="title" value="$title" required></label>
+    <label>Reformulation <textarea name="content" rows="6" required>$content</textarea></label>
+    <label>Projet
+      <select name="project_id">$project_options</select>
+    </label>
+    <label>Ou nouveau projet (créé à la validation) <input name="new_project" value="$new_project"></label>
+    <label>Tags (séparés par des virgules, 1 à 3) <input name="tags" value="$tags" required></label>
+    <button type="submit">Valider</button>
+    <a href="$cancel_url">Annuler</a>
+  </form>
+</main>

@@ -5,11 +5,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import auth
+import sqlite3
+from html import escape
+
+from . import ai, auth
+from .db import queries
 from .config import Config, load_config
 from .db import connect, migrate
 from .router import Request, Response, Router, html_response, json_response, redirect
-from .templates import page, render
+from .templates import Safe, page, render
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_BODY = 64 * 1024
@@ -18,6 +22,19 @@ log = logging.getLogger("corta")
 
 def is_api(path: str) -> bool:
     return path.startswith("/api/")
+
+
+NOTICES = {
+    "saved": "Idée enregistrée.",
+    "no_key": "Clé API absente : l'idée brute est dans l'Inbox, sans traitement IA.",
+    "ai_error": "L'IA a échoué : l'idée brute est dans l'Inbox. Vous pouvez la retraiter plus tard.",
+    "reprocess_error": "L'IA a échoué : l'idée reste inchangée dans l'Inbox.",
+}
+MAX_IDEA = 2000
+
+
+def app_page(title: str, body: Safe) -> Response:
+    return html_response(page(title, body, render("nav.html")))
 
 
 def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Router:
@@ -52,7 +69,135 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
 
     @router.route("GET", "/")
     def home(req: Request) -> Response:
-        return html_response(page("Corta", render("home.html")))
+        notice = NOTICES.get(req.query.get("notice", [""])[0], "")
+        return app_page("Corta", render("home.html", notice=notice))
+
+    def with_db() -> sqlite3.Connection:
+        return connect(config.db_path)
+
+    def suggestion_page(
+        raw_text: str, idea_id: str, s: ai.Suggestion, projects: list[tuple[int, str]]
+    ) -> Response:
+        options = ['<option value="">Inbox (aucun projet)</option>'] + [
+            f'<option value="{pid}"{" selected" if pid == s.project_id else ""}>'
+            f"{escape(name)}</option>"
+            for pid, name in projects
+        ]
+        return app_page(
+            "Valider",
+            render(
+                "suggestion.html",
+                raw_text=raw_text,
+                idea_id=idea_id,
+                title=s.title,
+                content=s.content,
+                project_options=Safe("".join(options)),
+                new_project=s.new_project,
+                tags=", ".join(s.tags),
+                cancel_url="/inbox" if idea_id else "/",
+            ),
+        )
+
+    @router.route("POST", "/ideas/suggest")
+    def suggest(req: Request) -> Response:
+        """Raw idea -> AI suggestion to validate. Nothing is stored unless the AI fails."""
+        raw = req.form.get("raw_text", "").strip()[:MAX_IDEA]
+        if not raw:
+            return redirect("/")
+        conn = with_db()
+        try:
+            projects, tags = queries.list_projects(conn), queries.list_tag_names(conn)
+            try:
+                s = ai.suggest(config.anthropic_api_key, raw, projects, tags)
+            except ai.AIError as e:
+                log.info("AI suggestion failed: %s", e)
+                queries.create_idea(conn, raw)  # plan B: raw idea in the Inbox
+                code = "ai_error" if config.anthropic_api_key else "no_key"
+                return redirect(f"/inbox?notice={code}")
+            return suggestion_page(raw, "", s, projects)
+        finally:
+            conn.close()
+
+    @router.route("POST", "/ideas/reprocess")
+    def reprocess(req: Request) -> Response:
+        conn = with_db()
+        try:
+            idea = (
+                queries.get_idea(conn, int(req.form["idea_id"]))
+                if req.form.get("idea_id", "").isdigit()
+                else None
+            )
+            if idea is None or idea["project_id"] is not None:
+                return redirect("/inbox")
+            projects, tags = queries.list_projects(conn), queries.list_tag_names(conn)
+            try:
+                s = ai.suggest(config.anthropic_api_key, idea["raw_text"], projects, tags)
+            except ai.AIError as e:
+                log.info("AI reprocess failed: %s", e)
+                return redirect("/inbox?notice=" + ("reprocess_error" if config.anthropic_api_key else "no_key"))
+            return suggestion_page(idea["raw_text"], str(idea["id"]), s, projects)
+        finally:
+            conn.close()
+
+    @router.route("POST", "/ideas/confirm")
+    def confirm(req: Request) -> Response:
+        f = req.form
+        title, content = f.get("title", "").strip(), f.get("content", "").strip()
+        tags = ai.normalize_tags(f.get("tags", "").split(","), [])[: ai.MAX_TAGS]
+        if not title or not content or not tags:
+            return html_response("Titre, reformulation et au moins un tag sont requis.", 400)
+        conn = with_db()
+        try:
+            conn.execute("BEGIN")
+            try:
+                known = queries.list_tag_names(conn)
+                tags = ai.normalize_tags(tags, known)
+                new_name = f.get("new_project", "").strip()
+                project_id: int | None = None
+                if new_name:
+                    project_id = queries.get_or_create_project(conn, new_name)
+                elif f.get("project_id", "").isdigit():
+                    pid = int(f["project_id"])
+                    if pid not in {p for p, _ in queries.list_projects(conn)}:
+                        conn.execute("ROLLBACK")
+                        return html_response("Projet inconnu.", 400)
+                    project_id = pid
+                idea_id = int(f["idea_id"]) if f.get("idea_id", "").isdigit() else None
+                if idea_id is not None and queries.get_idea(conn, idea_id) is None:
+                    idea_id = None
+                if idea_id is None:
+                    idea_id = queries.create_idea(conn, f.get("raw_text", "").strip() or content)
+                queries.update_idea(
+                    conn, idea_id, title=title, content=content,
+                    project_id=project_id, ai_processed=1,
+                )
+                queries.set_idea_tags(conn, idea_id, tags)
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+        finally:
+            conn.close()
+        return redirect("/inbox?notice=saved" if project_id is None else "/?notice=saved")
+
+    @router.route("GET", "/inbox")
+    def inbox(req: Request) -> Response:
+        notice = NOTICES.get(req.query.get("notice", [""])[0], "")
+        conn = with_db()
+        try:
+            rows = queries.list_inbox(conn)
+        finally:
+            conn.close()
+        items = "".join(
+            "<li><strong>{}</strong><br>{}"
+            '<form method="post" action="/ideas/reprocess">'
+            '<input type="hidden" name="idea_id" value="{}">'
+            '<button type="submit">Retraiter avec l\'IA</button></form></li>'.format(
+                escape(r["title"] or r["raw_text"]), escape(r["content"] or ""), r["id"]
+            )
+            for r in rows
+        ) or "<li>Inbox vide.</li>"
+        return app_page("Inbox", render("inbox.html", notice=notice, items=Safe(items)))
 
     @router.route("GET", "/healthz", public=True)
     def healthz(req: Request) -> Response:
