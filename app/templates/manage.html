@@ -1,0 +1,11 @@
+<div class="manage">
+  <form class="inline" method="post" action="/projects/rename">
+    <input type="hidden" name="id" value="$id">
+    <input name="name" value="$pname" required maxlength="100" aria-label="Nouveau nom">
+    <button type="submit">Renommer</button>
+  </form>
+  <form method="post" action="/projects/delete" data-confirm="Supprimer ce projet ? Ses idées retourneront dans l'Inbox.">
+    <input type="hidden" name="id" value="$id">
+    <button type="submit" class="danger">Supprimer</button>
+  </form>
+</div>

@@ -1,8 +1,10 @@
+import tempfile
 import unittest
 from pathlib import Path
 
 from app import auth
 from app.config import Config
+from app.db import connect, migrate
 from app.router import Request, Router, json_response
 from app.server import build_router, dispatch
 
@@ -16,10 +18,16 @@ def make_request(method: str, path: str, cookie: str = "", body: str = "") -> Re
 
 class AuthTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.router = build_router(CONFIG)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.config = Config(app_password="s3cret", session_secret="k" * 32, data_dir=Path(tmp.name))
+        conn = connect(self.config.db_path)
+        migrate(conn)
+        conn.close()
+        self.router = build_router(self.config)
 
     def dispatch_request(self, *args: str):
-        return dispatch(self.router, CONFIG, make_request(*args))
+        return dispatch(self.router, self.config, make_request(*args))
 
     def test_password_check(self) -> None:
         self.assertTrue(auth.check_password("s3cret", "s3cret"))

@@ -1,0 +1,17 @@
+<main class="wrap">
+  <p><a href="$back">← Retour</a></p>
+  <h1>Modifier l'idée</h1>
+  <form method="post" action="/idea" class="stack">
+    <input type="hidden" name="id" value="$id">
+    <label>Titre <input name="title" value="$title"></label>
+    <label>Contenu <textarea name="content" rows="8">$content</textarea></label>
+    <label>Projet <select name="project_id">$project_options</select></label>
+    <label>Statut <select name="status">$status_options</select></label>
+    <label>Tags (séparés par des virgules) <input name="tags" value="$tags"></label>
+    <button type="submit">Enregistrer</button>
+  </form>
+  <details>
+    <summary>Texte brut d'origine</summary>
+    <pre class="raw">$raw_text</pre>
+  </details>
+</main>
