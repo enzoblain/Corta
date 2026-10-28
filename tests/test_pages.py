@@ -47,7 +47,9 @@ class QueryTests(unittest.TestCase):
         queries.set_idea_tags(self.conn, a, ["web", "web", "ia"])
         queries.set_idea_tags(self.conn, b, ["ia"])
         queries.update_idea(self.conn, b, status="in_progress")
-        ids = lambda **kw: sorted(r["id"] for r in queries.list_ideas(self.conn, p, **kw))
+        def ids(**kw: str) -> list[int]:
+            return sorted(r["id"] for r in queries.list_ideas(self.conn, p, **kw))
+
         self.assertEqual(ids(), [a, b])
         self.assertEqual(ids(status="in_progress"), [b])
         self.assertEqual(ids(tag="web"), [a])
@@ -69,7 +71,9 @@ class QueryTests(unittest.TestCase):
         c = queries.create_idea(self.conn, "y", None)
         queries.update_idea(self.conn, b, title="Licorne", content="rien")
         queries.update_idea(self.conn, c, content="un dragon ici 100%")
-        found = lambda t: [r["id"] for r in queries.search_ideas(self.conn, t)]
+        def found(term: str) -> list[int]:
+            return [r["id"] for r in queries.search_ideas(self.conn, term)]
+
         self.assertEqual(found("zebra"), [a])
         self.assertEqual(found("licorne"), [b])
         self.assertEqual(found("dragon"), [c])
@@ -111,7 +115,9 @@ class PageTests(unittest.TestCase):
         self.assertEqual(self.call("POST", "/projects/create", "name=%3Cb%3EAlpha").status, 409)
         self.assertEqual(self.call("POST", "/projects/rename", f"id={pid}&name=Beta").status, 303)
         self.assertEqual(self.call("POST", "/projects/delete", f"id={pid}").status, 303)
-        self.assertIn("mon idee", self.text(self.call("GET", "/project")))
+        self.assertIn("mon idee", self.text(self.call("GET", "/inbox")))
+        self.assertIn("Retraiter avec l&#x27;IA".replace("&#x27;", "'"), self.text(self.call("GET", "/inbox")))
+        self.assertEqual(self.call("GET", "/project").status, 303)
         self.assertEqual(self.call("GET", f"/project?id={pid}").status, 404)
         self.assertEqual(self.call("GET", f"/idea?id={idea}").status, 200)
 
@@ -123,7 +129,7 @@ class PageTests(unittest.TestCase):
         self.assertEqual(self.call("POST", "/api/idea/status", f"id={idea}&status=done").status, 200)
         self.assertEqual(self.call("POST", "/api/idea/status", f"id={idea}&status=nope").status, 400)
         self.assertEqual(self.call("POST", "/api/idea/status", "id=999&status=done").status, 404)
-        body = f"id={idea}&title=T&content=C&project_id={pid}&status=in_progress&tags=a,+B"
+        body = f"id={idea}&title=T&content=C&project_id={pid}&status=in_progress&tags=a,+B,+%23a"
         self.assertEqual(self.call("POST", "/idea", body).status, 303)
         conn = connect(self.config.db_path)
         row = queries.get_idea(conn, idea)
@@ -132,5 +138,7 @@ class PageTests(unittest.TestCase):
         conn.close()
         self.assertIn("brut", self.text(self.call("GET", f"/idea?id={idea}")))
         self.assertIn("T", self.text(self.call("GET", f"/project?id={pid}&status=in_progress&tag=a")))
-        self.assertIn("1 résultat", self.text(self.call("GET", "/search?q=brut")))
+        found = self.text(self.call("GET", "/search?q=brut"))
+        self.assertIn("1 résultat", found)
+        self.assertEqual(found.count("/static/app.js"), 1)
         self.assertEqual(self.call("POST", "/idea", f"id={idea}&status=done&project_id=999").status, 400)

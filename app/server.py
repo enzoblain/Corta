@@ -176,25 +176,6 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
             conn.close()
         return redirect("/inbox?notice=saved" if project_id is None else "/?notice=saved")
 
-    @router.route("GET", "/inbox")
-    def inbox(req: Request) -> Response:
-        notice = NOTICES.get(req.query.get("notice", [""])[0], "")
-        conn = with_db()
-        try:
-            rows = queries.list_inbox(conn)
-        finally:
-            conn.close()
-        items = "".join(
-            "<li><strong>{}</strong><br>{}"
-            '<form method="post" action="/capture/reprocess">'
-            '<input type="hidden" name="idea_id" value="{}">'
-            '<button type="submit">Retraiter avec l\'IA</button></form></li>'.format(
-                escape(r["title"] or r["raw_text"]), escape(r["content"] or ""), r["id"]
-            )
-            for r in rows
-        ) or "<li>Inbox vide.</li>"
-        return app_page("Inbox", render("inbox.html", notice=notice, items=Safe(items)))
-
     @router.route("GET", "/healthz", public=True)
     def healthz(req: Request) -> Response:
         return json_response({"ok": True})

@@ -42,12 +42,6 @@ def get_idea(conn: sqlite3.Connection, idea_id: int) -> sqlite3.Row | None:
     return row
 
 
-def list_inbox(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    return conn.execute(
-        "SELECT * FROM ideas WHERE project_id IS NULL ORDER BY created_at DESC, id DESC"
-    ).fetchall()
-
-
 def get_or_create_project(conn: sqlite3.Connection, name: str) -> int:
     row = conn.execute(
         "SELECT id FROM projects WHERE name = ? COLLATE NOCASE", (name,)

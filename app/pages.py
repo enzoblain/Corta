@@ -3,6 +3,7 @@ import html
 import sqlite3
 from urllib.parse import urlencode
 
+from . import ai
 from .config import Config
 from .db import connect, queries
 from .router import Request, Response, Router, html_response, json_response, redirect
@@ -19,7 +20,7 @@ NOTICES = {
 }
 
 
-def esc(value: object) -> str:
+def escape_html(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
@@ -32,7 +33,7 @@ def parse_id(raw: str | None) -> int | None:
 
 
 def project_href(project_id: int | None) -> str:
-    return "/project" if project_id is None else f"/project?id={project_id}"
+    return "/inbox" if project_id is None else f"/project?id={project_id}"
 
 
 def counts_line(row: sqlite3.Row) -> str:
@@ -45,37 +46,44 @@ def status_select(idea: sqlite3.Row) -> str:
         for s, label in STATUS_LABELS.items()
     )
     return (
-        f'<select class="status" data-id="{idea["id"]}" data-current="{esc(idea["status"])}"'
+        f'<select class="status" data-id="{idea["id"]}" data-current="{escape_html(idea["status"])}"'
         f' aria-label="Statut">{opts}</select>'
     )
 
 
 def idea_items(ideas: list[sqlite3.Row], tags: dict[int, list[str]]) -> Safe:
     out = []
-    for i in ideas:
-        title = i["title"] or i["raw_text"][:80]
-        tag_html = "".join(f'<span class="tag">{esc(t)}</span>' for t in tags.get(i["id"], []))
+    for idea in ideas:
+        title = idea["title"] or idea["raw_text"][:80]
+        reprocess = (
+            '<form method="post" action="/capture/reprocess">'
+            f'<input type="hidden" name="idea_id" value="{idea["id"]}">'
+            '<button type="submit">Retraiter avec l\'IA</button></form>'
+            if idea["project_id"] is None and not idea["ai_processed"]
+            else ""
+        )
+        tag_html = "".join(f'<span class="tag">{escape_html(t)}</span>' for t in tags.get(idea["id"], []))
         out.append(
-            f'<li class="idea s-{esc(i["status"])}"><a class="title" href="/idea?id={i["id"]}">'
-            f"{esc(title)}</a><p class=\"tags\">{tag_html}</p>{status_select(i)}</li>"
+            f'<li class="idea s-{escape_html(idea["status"])}"><a class="title" href="/idea?id={idea["id"]}">'
+            f"{escape_html(title)}</a><p class=\"tags\">{tag_html}</p>{status_select(i)}{reprocess}</li>"
         )
     return Safe("".join(out) or "<li>Aucune idée.</li>")
 
 
 def build_pages(router: Router, config: Config) -> None:
-    def db() -> sqlite3.Connection:
+    def open_db() -> sqlite3.Connection:
         return connect(config.db_path)
 
     def home(req: Request, error: str = "", status: int = 200) -> Response:
-        conn = db()
+        conn = open_db()
         try:
             rows = [
-                f'<li><a class="title" href="/project">Inbox</a>'
+                f'<li><a class="title" href="/inbox">Inbox</a>'
                 f'<p class="counts">{counts_line(queries.inbox_counts(conn))}</p></li>'
             ]
             for p in queries.project_counts(conn):
                 rows.append(
-                    f'<li><a class="title" href="/project?id={p["id"]}">{esc(p["name"])}</a>'
+                    f'<li><a class="title" href="/project?id={p["id"]}">{escape_html(p["name"])}</a>'
                     f'<p class="counts">{counts_line(p)}</p></li>'
                 )
         finally:
@@ -88,14 +96,14 @@ def build_pages(router: Router, config: Config) -> None:
 
     router.add("GET", "/", home)
 
-    def project_page(req: Request) -> Response:
-        raw_id = req.query.get("id", [""])[0]
+    def project_page(req: Request, inbox: bool = False) -> Response:
+        raw_id = "" if inbox else req.query.get("id", [""])[0]
         project_id = parse_id(raw_id) if raw_id else None
         status = req.query.get("status", [""])[0]
         tag = req.query.get("tag", [""])[0]
         if status not in queries.STATUSES:
             status = ""
-        conn = db()
+        conn = open_db()
         try:
             project = queries.get_project(conn, project_id) if project_id is not None else None
             if raw_id and project is None:
@@ -109,7 +117,8 @@ def build_pages(router: Router, config: Config) -> None:
         def link(label: str, st: str, tg: str) -> str:
             qs = urlencode({k: v for k, v in (("id", raw_id), ("status", st), ("tag", tg)) if v})
             on = ' class="on"' if (st, tg) == (status, tag) else ""
-            return f'<a{on} href="/project{"?" + qs if qs else ""}">{esc(label)}</a>'
+            base = "/inbox" if project is None else "/project"
+            return f'<a{on} href="{base}{"?" + qs if qs else ""}">{escape_html(label)}</a>'
 
         status_filters = link("Tous", "", tag) + "".join(
             link(label, s, tag) for s, label in STATUS_LABELS.items()
@@ -127,11 +136,17 @@ def build_pages(router: Router, config: Config) -> None:
             status_filters=Safe(status_filters),
             tag_filters=Safe(tag_filters),
             rows=idea_items(ideas, tags),
-            error="",
+            notice=NOTICES.get(req.query.get("notice", [""])[0], ""),
         )
         return layout(project["name"] if project else "Inbox", body)
 
-    router.add("GET", "/project", project_page)
+    def project_route(req: Request) -> Response:
+        if not req.query.get("id", [""])[0]:
+            return redirect("/inbox")
+        return project_page(req)
+
+    router.add("GET", "/project", project_route)
+    router.add("GET", "/inbox", lambda req: project_page(req, inbox=True))
 
     def project_name(req: Request) -> str:
         return req.form.get("name", "").strip()[:100]
@@ -140,7 +155,7 @@ def build_pages(router: Router, config: Config) -> None:
         name = project_name(req)
         if not name:
             return home(req, "Nom requis.", 400)
-        conn = db()
+        conn = open_db()
         try:
             new_id = queries.create_project(conn, name)
         except sqlite3.IntegrityError:
@@ -154,7 +169,7 @@ def build_pages(router: Router, config: Config) -> None:
         name = project_name(req)
         if project_id is None or not name:
             return home(req, "Nom requis.", 400)
-        conn = db()
+        conn = open_db()
         try:
             queries.rename_project(conn, project_id, name)
         except sqlite3.IntegrityError:
@@ -166,7 +181,7 @@ def build_pages(router: Router, config: Config) -> None:
     def delete_project(req: Request) -> Response:
         project_id = parse_id(req.form.get("id"))
         if project_id is not None:
-            conn = db()
+            conn = open_db()
             try:
                 queries.delete_project(conn, project_id)
             finally:
@@ -179,7 +194,7 @@ def build_pages(router: Router, config: Config) -> None:
 
     def idea_form(req: Request) -> Response:
         idea_id = parse_id(req.query.get("id", [""])[0])
-        conn = db()
+        conn = open_db()
         try:
             idea = queries.get_idea(conn, idea_id) if idea_id is not None else None
             if idea is None:
@@ -192,7 +207,7 @@ def build_pages(router: Router, config: Config) -> None:
             f'<option value=""{" selected" if idea["project_id"] is None else ""}>Inbox</option>'
         ] + [
             f'<option value="{pid}"{" selected" if pid == idea["project_id"] else ""}>'
-            f"{esc(name)}</option>"
+            f"{escape_html(name)}</option>"
             for pid, name in projects
         ]
         status_options = "".join(
@@ -220,8 +235,7 @@ def build_pages(router: Router, config: Config) -> None:
         project_id = parse_id(project_raw)
         if idea_id is None or status not in queries.STATUSES or (project_raw and project_id is None):
             return html_response("Requête invalide", 400)
-        tags = [t.strip().lower() for t in form.get("tags", "").split(",") if t.strip()]
-        conn = db()
+        conn = open_db()
         try:
             if queries.get_idea(conn, idea_id) is None:
                 return html_response("Idée introuvable", 404)
@@ -235,6 +249,7 @@ def build_pages(router: Router, config: Config) -> None:
                 project_id=project_id,
                 status=status,
             )
+            tags = ai.normalize_tags(form.get("tags", "").split(","), queries.list_tag_names(conn))
             queries.set_idea_tags(conn, idea_id, tags)
         finally:
             conn.close()
@@ -248,7 +263,7 @@ def build_pages(router: Router, config: Config) -> None:
         status = req.form.get("status", "")
         if idea_id is None or status not in queries.STATUSES:
             return json_response({"error": "invalid"}, 400)
-        conn = db()
+        conn = open_db()
         try:
             if queries.get_idea(conn, idea_id) is None:
                 return json_response({"error": "not found"}, 404)
@@ -261,7 +276,7 @@ def build_pages(router: Router, config: Config) -> None:
 
     def search(req: Request) -> Response:
         q = req.query.get("q", [""])[0].strip()
-        conn = db()
+        conn = open_db()
         try:
             ideas = queries.search_ideas(conn, q) if q else []
             tags = queries.tags_of_ideas(conn, [i["id"] for i in ideas])
