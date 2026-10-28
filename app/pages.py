@@ -65,7 +65,7 @@ def idea_items(ideas: list[sqlite3.Row], tags: dict[int, list[str]]) -> Safe:
         tag_html = "".join(f'<span class="tag">{escape_html(t)}</span>' for t in tags.get(idea["id"], []))
         out.append(
             f'<li class="idea s-{escape_html(idea["status"])}"><a class="title" href="/idea?id={idea["id"]}">'
-            f"{escape_html(title)}</a><p class=\"tags\">{tag_html}</p>{status_select(i)}{reprocess}</li>"
+            f"{escape_html(title)}</a><p class=\"tags\">{tag_html}</p>{status_select(idea)}{reprocess}</li>"
         )
     return Safe("".join(out) or "<li>Aucune idée.</li>")
 
