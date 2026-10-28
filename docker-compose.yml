@@ -1,5 +1,22 @@
 services:
+  # Next.js app (default). Same ./data volume and SQLite file as the Python version.
+  web:
+    build: ./web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: "3000" # overrides PORT=8000 of a shared .env
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+
+  # Legacy Python version (plan B until N4). Never run it together with `web`:
+  # `docker compose --profile legacy up -d --build corta` after stopping `web`.
   corta:
+    profiles: ["legacy"]
     build: .
     restart: unless-stopped
     env_file: .env
