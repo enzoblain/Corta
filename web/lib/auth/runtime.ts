@@ -12,10 +12,12 @@ export function getLimiter(): LoginLimiter {
 /**
  * Limiter key. Without a trusted reverse proxy the client IP cannot be known
  * (X-Forwarded-For is spoofable), so a single global bucket is used: this is a
- * single-user app. With TRUST_PROXY=1 the first X-Forwarded-For entry is used.
+ * single-user app. With TRUST_PROXY=1 (exactly one trusted proxy in front) the LAST
+ * X-Forwarded-For entry is used: it is the one appended by the proxy, the
+ * earlier ones are client-controlled.
  */
 export function limiterKey(req: NextRequest, config: Config): string {
   if (!config.trustProxy) return "global";
-  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const forwarded = req.headers.get("x-forwarded-for")?.split(",").pop()?.trim();
   return forwarded || req.headers.get("x-real-ip") || "global";
 }

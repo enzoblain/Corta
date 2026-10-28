@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkPassword } from "@/lib/auth/password";
+import type { NextRequest } from "next/server";
+import { limiterKey } from "@/lib/auth/runtime";
+import type { Config } from "@/lib/config";
 import { LoginLimiter } from "@/lib/auth/limiter";
 import { makeSession, verifySession } from "@/lib/auth/session";
 
@@ -55,4 +58,20 @@ test("limiter reset clears the failures", () => {
   assert.equal(l.isBlocked("ip", 3), true);
   l.reset("ip");
   assert.equal(l.isBlocked("ip", 3), false);
+});
+
+test("limiterKey with TRUST_PROXY uses the last X-Forwarded-For entry", () => {
+  const config = { trustProxy: true } as Config;
+  const req = (xff: string): NextRequest =>
+    ({ headers: new Headers({ "x-forwarded-for": xff }) }) as unknown as NextRequest;
+  assert.equal(limiterKey(req("10.0.0.1, 203.0.113.9"), config), "203.0.113.9");
+  assert.equal(limiterKey(req("10.0.7.7, 203.0.113.9"), config), "203.0.113.9");
+  assert.equal(limiterKey(req("10.0.0.1"), { trustProxy: false } as Config), "global");
+});
+
+test("limiter purges expired keys once the map is large", () => {
+  const limiter = new LoginLimiter(5, 10);
+  for (let i = 0; i < 1001; i++) limiter.recordFailure(`k${i}`, 0);
+  limiter.recordFailure("late", 100);
+  assert.equal((limiter as unknown as { failures: Map<string, number[]> }).failures.size, 1);
 });

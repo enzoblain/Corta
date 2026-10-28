@@ -31,7 +31,8 @@ La base existante créée par la version Python est reprise telle quelle (même 
 
 ## Sessions et sécurité
 - Changer `SESSION_SECRET` invalide toutes les sessions existantes.
-- Après 5 mots de passe erronés en 15 min, `/api/login` répond 429, même avec le bon mot de passe. Le compteur est en mémoire (remis à zéro au redémarrage). Sans `TRUST_PROXY=1`, il y a un seul compteur global ; avec, un compteur par IP (`X-Forwarded-For`), à n'activer que derrière un proxy de confiance.
+- Après 5 mots de passe erronés en 15 min, `/api/login` répond 429, même avec le bon mot de passe. Le compteur est en mémoire (remis à zéro au redémarrage). Sans `TRUST_PROXY=1`, il y a un seul compteur global ; avec, un compteur par IP (dernière entrée de `X-Forwarded-For`), à n'activer que derrière un seul reverse proxy de confiance. Sans proxy, un tiers du réseau peut te bloquer temporairement en envoyant 5 mauvais mots de passe.
+- Lancer le serveur standalone depuis `web/` (le dossier `lib/db/migrations` est résolu depuis le répertoire courant).
 - Le cookie de session est `HttpOnly`, `SameSite=Lax` (et `Secure` avec `COOKIE_SECURE=1`).
 
 ## Ancienne version Python

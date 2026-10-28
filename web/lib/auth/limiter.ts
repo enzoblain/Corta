@@ -1,3 +1,5 @@
+const MAX_KEYS = 1000;
+
 /** In-memory brute-force guard: maxFailures failed logins per key within windowSeconds. */
 export class LoginLimiter {
   private failures = new Map<string, number[]>();
@@ -28,6 +30,12 @@ export class LoginLimiter {
   recordFailure(key: string, now: number = Date.now() / 1000): void {
     const recent = this.recent(key, now);
     this.failures.set(key, [...recent, now]);
+    if (this.failures.size > MAX_KEYS) this.purge(now);
+  }
+
+  /** Drops keys whose failures are all expired, so rotating keys cannot grow the map forever. */
+  private purge(now: number): void {
+    for (const key of [...this.failures.keys()]) this.recent(key, now);
   }
 
   reset(key: string): void {
