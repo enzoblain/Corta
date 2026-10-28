@@ -13,6 +13,7 @@ class Config:
     port: int = 8000
     cookie_secure: bool = False
     session_ttl: int = 60 * 60 * 24 * 30  # seconds
+    anthropic_api_key: str = ""  # server-side only; empty disables the AI
 
     @property
     def db_path(self) -> Path:
@@ -34,4 +35,5 @@ def load_config() -> Config:
         host=os.environ.get("HOST", "127.0.0.1"),
         port=int(os.environ.get("PORT", "8000")),
         cookie_secure=os.environ.get("COOKIE_SECURE", "0") == "1",
+        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
     )

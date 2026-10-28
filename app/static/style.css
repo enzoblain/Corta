@@ -4,3 +4,12 @@ label { display: block; margin-bottom: 1rem; }
 input { display: block; width: 100%; box-sizing: border-box; padding: .5rem; margin-top: .25rem; }
 button { padding: .5rem 1rem; cursor: pointer; }
 .error { color: #b00020; min-height: 1.2em; }
+.topbar { display: flex; gap: 1rem; align-items: center; padding: .5rem 1rem; background: #fff; box-shadow: 0 1px 4px #0002; }
+.topbar .capture { display: flex; flex: 1; gap: .5rem; margin: 0; }
+.topbar .capture input { margin: 0; }
+.card.wide { max-width: 40rem; }
+textarea, select { display: block; width: 100%; box-sizing: border-box; padding: .5rem; margin-top: .25rem; font: inherit; }
+.notice { color: #8a5a00; min-height: 1.2em; }
+.ideas { list-style: none; padding: 0; }
+.ideas li { padding: .75rem 0; border-bottom: 1px solid #eee; }
+.ideas form { display: inline; }

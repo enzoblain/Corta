@@ -19,5 +19,5 @@ def render(name: str, **context: object) -> Safe:
     return Safe(Template(raw).substitute(escaped))
 
 
-def page(title: str, body: Safe) -> Safe:
-    return render("base.html", title=title, body=body)
+def page(title: str, body: Safe, nav: Safe = Safe("")) -> Safe:
+    return render("base.html", title=title, body=body, nav=nav)
