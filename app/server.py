@@ -1,17 +1,15 @@
 """HTTP server wiring: routes, auth gate, static files. Run: python3 -m app.server"""
 import logging
 import mimetypes
+import sqlite3
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-import sqlite3
-from html import escape
-
 from . import ai, auth
-from .db import queries
 from .config import Config, load_config
-from .db import connect, migrate
+from .db import connect, migrate, queries
 from .router import Request, Response, Router, html_response, json_response, redirect
 from .templates import Safe, page, render
 
@@ -76,10 +74,15 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
         return connect(config.db_path)
 
     def suggestion_page(
-        raw_text: str, idea_id: str, s: ai.Suggestion, projects: list[tuple[int, str]]
+        raw_text: str, idea_id: str, suggestion: ai.Suggestion, projects: list[tuple[int, str]]
     ) -> Response:
-        options = ['<option value="">Inbox (aucun projet)</option>'] + [
-            f'<option value="{pid}"{" selected" if pid == s.project_id else ""}>'
+        options = ['<option value="">Inbox (aucun projet)</option>']
+        if suggestion.new_project:
+            options.append(
+                f'<option value="new" selected>➕ Nouveau : {escape(suggestion.new_project)}</option>'
+            )
+        options += [
+            f'<option value="{pid}"{" selected" if pid == suggestion.project_id else ""}>'
             f"{escape(name)}</option>"
             for pid, name in projects
         ]
@@ -89,16 +92,16 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
                 "suggestion.html",
                 raw_text=raw_text,
                 idea_id=idea_id,
-                title=s.title,
-                content=s.content,
+                title=suggestion.title,
+                content=suggestion.content,
                 project_options=Safe("".join(options)),
-                new_project=s.new_project,
-                tags=", ".join(s.tags),
+                new_project=suggestion.new_project,
+                tags=", ".join(suggestion.tags),
                 cancel_url="/inbox" if idea_id else "/",
             ),
         )
 
-    @router.route("POST", "/ideas/suggest")
+    @router.route("POST", "/capture/suggest")
     def suggest(req: Request) -> Response:
         """Raw idea -> AI suggestion to validate. Nothing is stored unless the AI fails."""
         raw = req.form.get("raw_text", "").strip()[:MAX_IDEA]
@@ -108,17 +111,17 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
         try:
             projects, tags = queries.list_projects(conn), queries.list_tag_names(conn)
             try:
-                s = ai.suggest(config.anthropic_api_key, raw, projects, tags)
+                suggestion = ai.suggest(config.anthropic_api_key, raw, projects, tags)
             except ai.AIError as e:
-                log.info("AI suggestion failed: %s", e)
+                log.warning("AI suggestion failed: %s", e)
                 queries.create_idea(conn, raw)  # plan B: raw idea in the Inbox
                 code = "ai_error" if config.anthropic_api_key else "no_key"
                 return redirect(f"/inbox?notice={code}")
-            return suggestion_page(raw, "", s, projects)
+            return suggestion_page(raw, "", suggestion, projects)
         finally:
             conn.close()
 
-    @router.route("POST", "/ideas/reprocess")
+    @router.route("POST", "/capture/reprocess")
     def reprocess(req: Request) -> Response:
         conn = with_db()
         try:
@@ -131,19 +134,19 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
                 return redirect("/inbox")
             projects, tags = queries.list_projects(conn), queries.list_tag_names(conn)
             try:
-                s = ai.suggest(config.anthropic_api_key, idea["raw_text"], projects, tags)
+                suggestion = ai.suggest(config.anthropic_api_key, idea["raw_text"], projects, tags)
             except ai.AIError as e:
-                log.info("AI reprocess failed: %s", e)
+                log.warning("AI reprocess failed: %s", e)
                 return redirect("/inbox?notice=" + ("reprocess_error" if config.anthropic_api_key else "no_key"))
-            return suggestion_page(idea["raw_text"], str(idea["id"]), s, projects)
+            return suggestion_page(idea["raw_text"], str(idea["id"]), suggestion, projects)
         finally:
             conn.close()
 
-    @router.route("POST", "/ideas/confirm")
+    @router.route("POST", "/capture/confirm")
     def confirm(req: Request) -> Response:
-        f = req.form
-        title, content = f.get("title", "").strip(), f.get("content", "").strip()
-        tags = ai.normalize_tags(f.get("tags", "").split(","), [])[: ai.MAX_TAGS]
+        form = req.form
+        title, content = form.get("title", "").strip(), form.get("content", "").strip()
+        tags = ai.normalize_tags(form.get("tags", "").split(","), [])[: ai.MAX_TAGS]
         if not title or not content or not tags:
             return html_response("Titre, reformulation et au moins un tag sont requis.", 400)
         conn = with_db()
@@ -152,21 +155,24 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
             try:
                 known = queries.list_tag_names(conn)
                 tags = ai.normalize_tags(tags, known)
-                new_name = f.get("new_project", "").strip()
+                new_name = form.get("new_project", "").strip()
                 project_id: int | None = None
-                if new_name:
+                choice = form.get("project_id", "")
+                if choice == "new":
+                    if not new_name:
+                        conn.execute("ROLLBACK")
+                        return html_response("Nom du nouveau projet requis.", 400)
                     project_id = queries.get_or_create_project(conn, new_name)
-                elif f.get("project_id", "").isdigit():
-                    pid = int(f["project_id"])
-                    if pid not in {p for p, _ in queries.list_projects(conn)}:
+                elif choice.isdigit():
+                    if int(choice) not in {p for p, _ in queries.list_projects(conn)}:
                         conn.execute("ROLLBACK")
                         return html_response("Projet inconnu.", 400)
-                    project_id = pid
-                idea_id = int(f["idea_id"]) if f.get("idea_id", "").isdigit() else None
+                    project_id = int(choice)
+                idea_id = int(form["idea_id"]) if form.get("idea_id", "").isdigit() else None
                 if idea_id is not None and queries.get_idea(conn, idea_id) is None:
                     idea_id = None
                 if idea_id is None:
-                    idea_id = queries.create_idea(conn, f.get("raw_text", "").strip() or content)
+                    idea_id = queries.create_idea(conn, form.get("raw_text", "").strip() or content)
                 queries.update_idea(
                     conn, idea_id, title=title, content=content,
                     project_id=project_id, ai_processed=1,
@@ -190,7 +196,7 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
             conn.close()
         items = "".join(
             "<li><strong>{}</strong><br>{}"
-            '<form method="post" action="/ideas/reprocess">'
+            '<form method="post" action="/capture/reprocess">'
             '<input type="hidden" name="idea_id" value="{}">'
             '<button type="submit">Retraiter avec l\'IA</button></form></li>'.format(
                 escape(r["title"] or r["raw_text"]), escape(r["content"] or ""), r["id"]

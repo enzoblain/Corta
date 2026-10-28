@@ -46,9 +46,14 @@ def list_inbox(conn: sqlite3.Connection) -> list[sqlite3.Row]:
 
 
 def get_or_create_project(conn: sqlite3.Connection, name: str) -> int:
-    conn.execute("INSERT OR IGNORE INTO projects (name) VALUES (?)", (name,))
-    row = conn.execute("SELECT id FROM projects WHERE name = ?", (name,)).fetchone()
-    return int(row["id"])
+    row = conn.execute(
+        "SELECT id FROM projects WHERE name = ? COLLATE NOCASE", (name,)
+    ).fetchone()
+    if row is not None:
+        return int(row["id"])
+    cur = conn.execute("INSERT INTO projects (name) VALUES (?)", (name,))
+    assert cur.lastrowid is not None
+    return cur.lastrowid
 
 
 def set_idea_tags(conn: sqlite3.Connection, idea_id: int, tags: list[str]) -> None:
