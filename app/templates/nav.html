@@ -1,8 +1,12 @@
-<header class="topbar">
-  <a href="/">Corta</a>
+<header class="nav">
+  <a class="brand" href="/">Corta</a>
   <a href="/inbox">Inbox</a>
-  <form method="post" action="/capture/suggest" class="capture">
-    <input name="raw_text" placeholder="Une idée en vrac…" maxlength="2000" required>
+  <form class="capture" method="post" action="/capture/suggest">
+    <input name="raw_text" placeholder="Une idée en vrac…" maxlength="2000" required aria-label="Nouvelle idée">
     <button type="submit">Capturer</button>
   </form>
+  <form class="search" method="get" action="/search">
+    <input type="search" name="q" value="$q" placeholder="Rechercher…" aria-label="Rechercher">
+  </form>
+  <form method="post" action="/logout"><button type="submit" class="link">Déconnexion</button></form>
 </header>

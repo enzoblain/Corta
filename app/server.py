@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 from . import ai, auth
 from .config import Config, load_config
 from .db import connect, migrate, queries
+from .pages import NOTICES, build_pages
 from .router import Request, Response, Router, html_response, json_response, redirect
 from .templates import Safe, page, render
 
@@ -22,17 +23,11 @@ def is_api(path: str) -> bool:
     return path.startswith("/api/")
 
 
-NOTICES = {
-    "saved": "Idée enregistrée.",
-    "no_key": "Clé API absente : l'idée brute est dans l'Inbox, sans traitement IA.",
-    "ai_error": "L'IA a échoué : l'idée brute est dans l'Inbox. Vous pouvez la retraiter plus tard.",
-    "reprocess_error": "L'IA a échoué : l'idée reste inchangée dans l'Inbox.",
-}
 MAX_IDEA = 2000
 
 
 def app_page(title: str, body: Safe) -> Response:
-    return html_response(page(title, body, render("nav.html")))
+    return html_response(page(title, body, render("nav.html", q="")))
 
 
 def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Router:
@@ -64,11 +59,6 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
     def logout(req: Request) -> Response:
         cookie = auth.cookie_header("", 0, config.cookie_secure)
         return redirect("/login", [("Set-Cookie", cookie)])
-
-    @router.route("GET", "/")
-    def home(req: Request) -> Response:
-        notice = NOTICES.get(req.query.get("notice", [""])[0], "")
-        return app_page("Corta", render("home.html", notice=notice))
 
     def with_db() -> sqlite3.Connection:
         return connect(config.db_path)
@@ -213,6 +203,7 @@ def build_router(config: Config, limiter: auth.LoginLimiter | None = None) -> Ro
     def ping(req: Request) -> Response:
         return json_response({"pong": True})
 
+    build_pages(router, config)
     return router
 
 

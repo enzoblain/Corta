@@ -23,6 +23,9 @@ def update_idea(conn: sqlite3.Connection, idea_id: int, **fields: object) -> Non
     )
 
 
+STATUSES = ("todo", "in_progress", "done")
+
+
 def list_projects(conn: sqlite3.Connection) -> list[tuple[int, str]]:
     rows = conn.execute("SELECT id, name FROM projects ORDER BY name COLLATE NOCASE")
     return [(r["id"], r["name"]) for r in rows]
@@ -51,17 +54,115 @@ def get_or_create_project(conn: sqlite3.Connection, name: str) -> int:
     ).fetchone()
     if row is not None:
         return int(row["id"])
+    return create_project(conn, name)
+
+
+def create_project(conn: sqlite3.Connection, name: str) -> int:
     cur = conn.execute("INSERT INTO projects (name) VALUES (?)", (name,))
     assert cur.lastrowid is not None
     return cur.lastrowid
 
 
-def set_idea_tags(conn: sqlite3.Connection, idea_id: int, tags: list[str]) -> None:
+def rename_project(conn: sqlite3.Connection, project_id: int, name: str) -> None:
+    conn.execute("UPDATE projects SET name = ? WHERE id = ?", (name, project_id))
+
+
+def delete_project(conn: sqlite3.Connection, project_id: int) -> None:
+    # ideas.project_id goes back to NULL (Inbox) through ON DELETE SET NULL
+    conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+
+
+def get_project(conn: sqlite3.Connection, project_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+
+
+def _count_columns() -> str:
+    return ", ".join(
+        f"COALESCE(SUM(i.status = '{s}'), 0) AS {s}" for s in STATUSES  # constants only
+    )
+
+
+def project_counts(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every project with its idea counts per status (todo, in_progress, done)."""
+    return conn.execute(
+        f"SELECT p.id, p.name, {_count_columns()} FROM projects p"
+        " LEFT JOIN ideas i ON i.project_id = p.id GROUP BY p.id ORDER BY p.name COLLATE NOCASE"
+    ).fetchall()
+
+
+def inbox_counts(conn: sqlite3.Connection) -> sqlite3.Row:
+    return conn.execute(
+        f"SELECT {_count_columns()} FROM ideas i WHERE i.project_id IS NULL"
+    ).fetchone()
+
+
+def list_ideas(
+    conn: sqlite3.Connection,
+    project_id: int | None,
+    status: str | None = None,
+    tag: str | None = None,
+) -> list[sqlite3.Row]:
+    """Ideas of a project (None = Inbox), optionally filtered by status and tag name."""
+    sql = "SELECT i.* FROM ideas i WHERE i.project_id IS ?"
+    params: list[object] = [project_id]
+    if status:
+        sql += " AND i.status = ?"
+        params.append(status)
+    if tag:
+        sql += (
+            " AND i.id IN (SELECT it.idea_id FROM idea_tags it"
+            " JOIN tags t ON t.id = it.tag_id WHERE t.name = ?)"
+        )
+        params.append(tag)
+    return conn.execute(sql + " ORDER BY i.created_at DESC, i.id DESC", params).fetchall()
+
+
+def tags_of_ideas(conn: sqlite3.Connection, idea_ids: list[int]) -> dict[int, list[str]]:
+    if not idea_ids:
+        return {}
+    marks = ", ".join("?" for _ in idea_ids)  # placeholders only
+    rows = conn.execute(
+        "SELECT it.idea_id, t.name FROM idea_tags it JOIN tags t ON t.id = it.tag_id"
+        f" WHERE it.idea_id IN ({marks}) ORDER BY t.name",
+        idea_ids,
+    ).fetchall()
+    out: dict[int, list[str]] = {i: [] for i in idea_ids}
+    for r in rows:
+        out[r["idea_id"]].append(r["name"])
+    return out
+
+
+def project_tags(conn: sqlite3.Connection, project_id: int | None) -> list[str]:
+    rows = conn.execute(
+        "SELECT DISTINCT t.name FROM tags t JOIN idea_tags it ON it.tag_id = t.id"
+        " JOIN ideas i ON i.id = it.idea_id WHERE i.project_id IS ? ORDER BY t.name",
+        (project_id,),
+    ).fetchall()
+    return [r["name"] for r in rows]
+
+
+def set_idea_tags(conn: sqlite3.Connection, idea_id: int, names: list[str]) -> None:
+    """Replace the tags of an idea (names are created on demand)."""
     conn.execute("DELETE FROM idea_tags WHERE idea_id = ?", (idea_id,))
-    for name in tags:
+    for name in dict.fromkeys(names):
         conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (name,))
         conn.execute(
-            "INSERT OR IGNORE INTO idea_tags (idea_id, tag_id) "
-            "SELECT ?, id FROM tags WHERE name = ?",
+            "INSERT INTO idea_tags (idea_id, tag_id) SELECT ?, id FROM tags WHERE name = ?",
             (idea_id, name),
         )
+    conn.execute("UPDATE ideas SET updated_at = datetime('now') WHERE id = ?", (idea_id,))
+
+
+def _like_pattern(term: str) -> str:
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def search_ideas(conn: sqlite3.Connection, term: str) -> list[sqlite3.Row]:
+    """Case-insensitive LIKE over title, content and raw text."""
+    pattern = _like_pattern(term)
+    return conn.execute(
+        "SELECT * FROM ideas WHERE title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\'"
+        " OR raw_text LIKE ? ESCAPE '\\' ORDER BY updated_at DESC, id DESC",
+        (pattern, pattern, pattern),
+    ).fetchall()
